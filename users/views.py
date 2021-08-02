@@ -33,6 +33,10 @@ from .serializers import *
 from .utils import Util
 
 
+class CustomRedirect(HttpResponsePermanentRedirect):
+    allowed_schemes = [os.environ.get('APP_SCHEME'), 'http', 'https']
+
+
 class VerifyEmail(APIView):
     serializer_class = EmailVerificationSerializer
 
@@ -41,7 +45,7 @@ class VerifyEmail(APIView):
 
     @swagger_auto_schema(manual_parameters=[token_param_config])
     def get(self, request):
-        token = request.GET.get('token')
+        token = request.headers['Authorization']
         try:
             payload = jwt.decode(token, settings.SECRET_KEY)
             user = User.objects.get(id=payload['user_id'])
@@ -58,6 +62,26 @@ class VerifyEmail(APIView):
 class RegistrationAPIView(generics.GenericAPIView):
     serializer_class = RegistrationSerializer
 
+    # def post(self, request):
+    #     user = request.data
+    #     serializer = self.serializer_class(data=user)
+    #     serializer.is_valid(raise_exception=True)
+    #     serializer.save()
+    #     user_data = serializer.data
+    #     user = User.objects.get(email=user_data['email'])
+    #     token = RefreshToken.for_user(user).access_token
+    #     relativeLink = reverse('users:email-verify')
+    #     absurl = 'http://lk.norma.kg/auth/activate/' + str(token)
+    #     email_body = 'Здраствуйте ' + user.first_name + \
+    #                  'Используйте ссылку ниже что бы активировать аккаунт \n ' \
+    #                  'Ссылка будет ативен 10 минут \n' + \
+    #                  absurl
+    #     data = {'email_body': email_body, 'to_email': user.email,
+    #             'email_subject': 'Verify your email'}
+    #
+    #     Util.send_email(data)
+    #     return Response(user_data, status=status.HTTP_201_CREATED)
+
     def post(self, request):
         user = request.data
         serializer = self.serializer_class(data=user)
@@ -66,17 +90,18 @@ class RegistrationAPIView(generics.GenericAPIView):
         user_data = serializer.data
         user = User.objects.get(email=user_data['email'])
         token = RefreshToken.for_user(user).access_token
-
         relativeLink = reverse('users:email-verify')
         absurl = 'http://lk.norma.kg/auth/activate/' + str(token)
-        email_body = 'Здраствуйте ' + f'{user.last_name} {user.first_name} \n'\
-                     'Используйте ссылку ниже что бы активировать аккаунт \n'\
-                     'Ссылка будет ативен 10 минут \n' +\
+        email_body = 'Здраствуйте ' + user.first_name + \
+                     'Используйте ссылку ниже что бы активировать аккаунт \n ' \
+                     'Ссылка будет ативен 10 минут \n' + \
                      absurl
-        data = {'email_body': email_body, 'to_email': user.email, 'email_subject': 'Verify your email'}
+        data = {'email_body': email_body, 'to_email': user.email,
+                'email_subject': 'Verify your email'}
 
         Util.send_email(data)
         return Response(user_data, status=status.HTTP_201_CREATED)
+
 
 
 class RequestPasswordResetEmailAPIView(generics.GenericAPIView):
@@ -95,7 +120,7 @@ class RequestPasswordResetEmailAPIView(generics.GenericAPIView):
             relativeLink = reverse('users:password-reset-confirm', kwargs={'uidb64': uidb64, 'token': token})
 
             redirect_url = request.data.get('redirect_url', '')
-            absurl = 'http://lk.norma.kg' + relativeLink
+            absurl = 'http://localhost:3000' + relativeLink
 
             email_body = 'Hello, \n Use link below to reset your password  \n' + \
                          absurl + "?redirect_url=" + redirect_url
@@ -115,15 +140,13 @@ class RequestPasswordResetEmailAPIView(generics.GenericAPIView):
         return Response({'success': 'We have sent you a link to reset your password'}, status=status.HTTP_200_OK)
 
 
-class CustomRedirect(HttpResponsePermanentRedirect):
-    allowed_schemes = [os.environ.get('APP_SCHEME'), 'http', 'https']
-
-
 class PasswordTokenCheckGenericAPIView(generics.GenericAPIView):
     serializer_class = SetNewPasswordSerializer
 
     def get(self, request, uidb64, token):
+
         redirect_url = request.GET.get('redirect_url')
+
         try:
             id = smart_str(urlsafe_base64_decode(uidb64))
             user = User.objects.get(id=id)
